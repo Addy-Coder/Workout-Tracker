@@ -1,0 +1,22 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: WORKOUT-TRACKER
+  datasource:
+    url: jdbc:postgresql://localhost:5432/workout_tracker
+    username: postgres
+    password: addy
+
+  sql:
+    init:
+      data-locations:
+        - classpath:\db\data.sql
+      mode: NEVER
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    defer-datasource-initialization: true
