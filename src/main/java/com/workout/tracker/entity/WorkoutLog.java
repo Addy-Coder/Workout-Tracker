@@ -9,6 +9,7 @@ import lombok.*;
 @Setter
 @ToString
 @Entity
+@Builder
 @Table(name = "wt_workout_log")
 public class WorkoutLog {
     @Id

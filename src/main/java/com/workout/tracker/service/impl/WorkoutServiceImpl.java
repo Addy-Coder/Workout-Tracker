@@ -1,15 +1,12 @@
 package com.workout.tracker.service.impl;
 
-import com.workout.tracker.entity.Exercise;
-import com.workout.tracker.entity.Workout;
-import com.workout.tracker.entity.WorkoutExercise;
+import com.workout.tracker.entity.*;
 import com.workout.tracker.exception.APIException;
 import com.workout.tracker.exception.ExceptionUtility;
 import com.workout.tracker.model.workout.WorkoutBaseDTO;
 import com.workout.tracker.model.workout.exercise.WorkoutExerciseDTO;
-import com.workout.tracker.repository.ExerciseRepository;
-import com.workout.tracker.repository.WorkoutExerciseRepository;
-import com.workout.tracker.repository.WorkoutRepository;
+import com.workout.tracker.model.workout.user.WorkoutUserDTO;
+import com.workout.tracker.repository.*;
 import com.workout.tracker.service.WorkoutService;
 import com.workout.tracker.service.validation.ValidateInput;
 import com.workout.tracker.service.validation.impl.workout.CreateWorkoutValidator;
@@ -28,12 +25,16 @@ public class WorkoutServiceImpl implements WorkoutService {
     private final WorkoutRepository workoutRepository;
     private final WorkoutExerciseRepository workoutExerciseRepository;
     private final ExerciseRepository exerciseRepository;
+    private final UserRepository userRepository;
+    private final WorkoutLogRepository workoutLogRepository;
 
     @Autowired
-    public WorkoutServiceImpl(WorkoutRepository workoutRepository, WorkoutExerciseRepository workoutExerciseRepository, ExerciseRepository exerciseRepository) {
+    public WorkoutServiceImpl(WorkoutRepository workoutRepository, WorkoutExerciseRepository workoutExerciseRepository, ExerciseRepository exerciseRepository, UserRepository userRepository, WorkoutLogRepository workoutLogRepository) {
         this.workoutRepository = workoutRepository;
         this.workoutExerciseRepository = workoutExerciseRepository;
         this.exerciseRepository = exerciseRepository;
+        this.userRepository = userRepository;
+        this.workoutLogRepository = workoutLogRepository;
     }
 
     @Override
@@ -115,5 +116,81 @@ public class WorkoutServiceImpl implements WorkoutService {
 
 
         return workoutExerciseRepository.saveAll(workoutExerciseList);
+    }
+
+    @Override
+    public List<WorkoutUser> associateUsersToWorkout(String workoutId, List<WorkoutUserDTO> workoutUserDTOList) {
+        Workout workout = workoutRepository.findById(workoutId).orElseThrow(ExceptionUtility::invalidWorkoutId);
+        List<String> userIds = workoutUserDTOList.stream().map(WorkoutUserDTO::getUserId).toList();
+
+        List<User> users = userRepository.findAllById(userIds);
+
+        Map<String, User> validUserIdMap = users.stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+
+        List<String> invalidUserIdList = userIds.stream().filter(id -> !validUserIdMap.containsKey(id)).toList();
+
+        if (!invalidUserIdList.isEmpty()) {
+            throw new APIException(
+                    "Provide valid user ids",
+                    "Invalid user ids provided : " + invalidUserIdList,
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+
+        List<WorkoutUser> workoutUserList = new LinkedList<>();
+
+        for (WorkoutUserDTO workoutUserDTO : workoutUserDTOList) {
+            long currentTimeMillis = System.currentTimeMillis();
+            workoutUserList.add(
+                    WorkoutUser.builder()
+                            .workout(workout)
+                            .user(validUserIdMap.get(workoutUserDTO.getUserId()))
+                            .assignedAt(currentTimeMillis)
+                            .ct(currentTimeMillis)
+                            .lu(currentTimeMillis)
+                            .build()
+            );
+        }
+
+        return workoutUserList;
+    }
+
+    @Override
+    public WorkoutLog startUserWorkout(String workoutId, String userId) {
+        Workout workout = workoutRepository.findById(workoutId).orElseThrow(ExceptionUtility::invalidWorkoutId);
+        User user = userRepository.findById(userId).orElseThrow(ExceptionUtility::invalidUserId);
+
+        // TODO: Check for existing workout log whether it is getting edited or not
+
+        long currentTimeMillis = System.currentTimeMillis();
+
+        WorkoutLog workoutLog = WorkoutLog.builder()
+                .user(user)
+                .workout(workout)
+                .startedAt(currentTimeMillis)
+                .ct(currentTimeMillis)
+                .lu(currentTimeMillis)
+                .build();
+
+        return workoutLogRepository.save(workoutLog);
+    }
+
+    @Override
+    public WorkoutLog endUserWorkout(String workoutId, String userId){
+        Workout workout = workoutRepository.findById(workoutId).orElseThrow(ExceptionUtility::invalidWorkoutId);
+        User user = userRepository.findById(userId).orElseThrow(ExceptionUtility::invalidUserId);
+
+        WorkoutLog workoutLog = workoutLogRepository.findByWorkoutAndUserAndEndedAtIsNull(workout, user).orElseThrow(() -> new APIException(
+                "Workout not started by this user",
+                "Workout not started by this user",
+                HttpStatus.BAD_REQUEST
+        ));
+
+        long currentTimeMillis = System.currentTimeMillis();
+        workoutLog.setEndedAt(currentTimeMillis);
+        workoutLog.setLu(currentTimeMillis);
+
+        return workoutLogRepository.save(workoutLog);
     }
 }

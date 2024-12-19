@@ -17,4 +17,12 @@ public class ExceptionUtility {
                 HttpStatus.NOT_FOUND
         );
     }
+
+    public static APIException invalidUserId() {
+        return new APIException(
+                "Provide valid user id",
+                "Provide valid user id",
+                HttpStatus.NOT_FOUND
+        );
+    }
 }
